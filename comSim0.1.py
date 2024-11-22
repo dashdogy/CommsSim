@@ -96,22 +96,20 @@ def update(frame):
     # Planet positions
     earth_pos = satellite_position(EARTH_ORBIT_RADIUS, EARTH_PERIOD, time)
     mars_pos = satellite_position(MARS_ORBIT_RADIUS, MARS_PERIOD, time)
-    earth.set_data(earth_pos[0], earth_pos[1])
-    mars.set_data(mars_pos[0], mars_pos[1])
+    earth.set_data([earth_pos[0]], [earth_pos[1]])
+    mars.set_data([mars_pos[0]], [mars_pos[1]])
     
     # Satellite positions
     earth_sat_pos = satellite_position(EARTH_SATELLITE_RADIUS, EARTH_PERIOD / 24, time)
     mars_sat_pos = satellite_position(MARS_SATELLITE_RADIUS, MARS_PERIOD / 24, time)
-    earth_satellite.set_data(earth_sat_pos[0] + earth_pos[0], earth_sat_pos[1] + earth_pos[1])
-    mars_satellite.set_data(mars_sat_pos[0] + mars_pos[0], mars_sat_pos[1] + mars_pos[1])
+    earth_satellite.set_data([earth_sat_pos[0] + earth_pos[0]], [earth_sat_pos[1] + earth_pos[1]])
+    mars_satellite.set_data([mars_sat_pos[0] + mars_pos[0]], [mars_sat_pos[1] + mars_pos[1]])
     
     # Orbital paths
     earth_orbit.set_data(EARTH_ORBIT_RADIUS * np.cos(theta), EARTH_ORBIT_RADIUS * np.sin(theta))
     mars_orbit.set_data(MARS_ORBIT_RADIUS * np.cos(theta), MARS_ORBIT_RADIUS * np.sin(theta))
     earth_satellite_orbit.set_data(EARTH_SATELLITE_RADIUS * np.cos(theta) + earth_pos[0], EARTH_SATELLITE_RADIUS * np.sin(theta) + earth_pos[1])
     mars_satellite_orbit.set_data(MARS_SATELLITE_RADIUS * np.cos(theta) + mars_pos[0], MARS_SATELLITE_RADIUS * np.sin(theta) + mars_pos[1])
-    
-    
     
     # Communication line
     start = earth_sat_pos + earth_pos
@@ -136,7 +134,6 @@ def update(frame):
     elif focus == 'MarsSat1':
         ax.set_xlim(mars_sat_pos[0] + mars_pos[0] - initial_zoom / 10000, mars_sat_pos[0] + mars_pos[0] + initial_zoom / 10000)
         ax.set_ylim(mars_sat_pos[1] + mars_pos[1] - initial_zoom / 10000, mars_sat_pos[1] + mars_pos[1] + initial_zoom / 10000)
-
     elif focus is None:  # Center on Sun
         ax.set_xlim(-initial_zoom, initial_zoom)
         ax.set_ylim(-initial_zoom, initial_zoom)
@@ -146,6 +143,7 @@ def update(frame):
     fig.canvas.draw()
     
     return earth, mars, earth_satellite, mars_satellite, earth_orbit, mars_orbit, communication_line, speed_text
+
 
 # Scroll event handler
 def on_scroll(event):
@@ -174,7 +172,7 @@ def on_key(event):
         focus = 'Earth'  # Focus on Earth
     elif event.key == 'm':
         focus = 'Mars'  # Focus on Mars
-    elif event.key == 's':
+    elif event.key == 'g':
         focus = None  # Center on Sun
     elif event.key == '1':
         focus = 'EarthSat1'  # Focus on Earth Satellite
@@ -183,7 +181,7 @@ def on_key(event):
     elif event.key == 'up':
         simulation_speed = min(simulation_speed * 2, 128)  # Cap speed at 128x
     elif event.key == 'down':
-        simulation_speed = max(simulation_speed / 2, 0.125)  # Min speed at 0.125x
+        simulation_speed = max(simulation_speed / 2, 0.0000001)  # Min speed at 0.125x
 
 # Connect the scroll and keyboard events to the handlers
 fig.canvas.mpl_connect('scroll_event', on_scroll)
