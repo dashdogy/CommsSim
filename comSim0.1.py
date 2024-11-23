@@ -30,6 +30,7 @@ def kepler_orbit_points(semi_major_axis, eccentricity, num_points=1000):
 earth_orbit_x, earth_orbit_y = kepler_orbit_points(EARTH_SEMI_MAJOR_AXIS, EARTH_ECCENTRICITY)
 mars_orbit_x, mars_orbit_y = kepler_orbit_points(MARS_SEMI_MAJOR_AXIS, MARS_ECCENTRICITY)
 
+
 def kepler_position(semi_major_axis, eccentricity, orbital_period, time):
     mean_motion = 2 * np.pi / orbital_period
     mean_anomaly = mean_motion * time
@@ -65,13 +66,14 @@ ax.set_ylim(-initial_zoom, initial_zoom)
 ax.plot(earth_orbit_x, earth_orbit_y, 'b--', label='Earth Orbit')
 ax.plot(mars_orbit_x, mars_orbit_y, 'r--', label='Mars Orbit')
 
+
 # Planets and satellites
 earth, = ax.plot([], [], 'bo', markersize=6, label='Earth')
 mars, = ax.plot([], [], 'ro', markersize=6, label='Mars')
 sun, = ax.plot([0], [0], 'yo', markersize=12, label='Sun')
 earth_satellite, = ax.plot([], [], 'go', markersize=4, label='Earth Satellite')
 mars_satellite, = ax.plot([], [], 'mo', markersize=4, label='Mars Satellite')
-communication_line, = ax.plot([], [], '-', lw=1.5, label='Communication Link', color='green')
+communication_line, = ax.plot([], [], '-', lw=1.5, label='Communication Link', color='green', alpha=1)
 
 # Speed indicator
 speed_text = ax.text(0.02, 0.95, '', transform=ax.transAxes, fontsize=10, color='black', ha='left')
@@ -88,6 +90,25 @@ def init():
 # Initialize the MET text
 met_text = ax.text(0.02, 0.92, '', transform=ax.transAxes, fontsize=10, color='black', ha='left')
 
+def ray_intersects_sphere(ray_origin, ray_direction, sphere_center, sphere_radius):
+    """Check if a ray intersects a sphere (representing a celestial body)."""
+    # Vector from ray origin to sphere center
+    ray_to_sphere = sphere_center - ray_origin
+    
+    # Project this vector onto the ray direction to get the distance along the ray to the closest point
+    projection = np.dot(ray_to_sphere, ray_direction)
+    
+    # Get the closest point on the ray to the sphere center
+    closest_point = ray_origin + projection * ray_direction
+    
+    # Calculate the distance from the closest point to the sphere center
+    distance_to_sphere = np.linalg.norm(closest_point - sphere_center)
+    
+    # If the distance from the closest point is less than the radius of the sphere, the ray intersects the sphere
+    if distance_to_sphere < sphere_radius:
+        return True  # Ray intersects the sphere
+    return False  # Ray does not intersect the sphere
+
 
 def format_time(seconds):
     """Format seconds into Days:HH:MM:SS format."""
@@ -101,7 +122,12 @@ def format_time(seconds):
 # Variable to store the current simulation time bad fix but if it works it works
 current_time = 0  # Start at 0 seconds
 
-# Function to update the simulation
+def orbital_period(semi_major_axis, mass_of_planet):
+    """Calculate the orbital period using Kepler's Third Law."""
+    G = 6.67430e-11  # Gravitational constant in m^3 kg^-1 s^-2
+    return 2 * np.pi * np.sqrt((semi_major_axis**3) / (G * mass_of_planet))
+
+#Render Loop
 def update(frame):
     global focus, simulation_speed, current_time
     current_time += 3600 * simulation_speed  # Increment time based on speed (in seconds)
@@ -114,18 +140,60 @@ def update(frame):
     earth.set_data([earth_pos[0]], [earth_pos[1]])
     mars.set_data([mars_pos[0]], [mars_pos[1]])
 
-    # Satellite positions based on updated time
-    earth_sat_angle = (2 * np.pi * current_time / (EARTH_PERIOD / 24)) % (2 * np.pi)
-    mars_sat_angle = (2 * np.pi * current_time / (MARS_PERIOD / 24)) % (2 * np.pi)
+    # Calculate the orbital periods of the satellites around Earth and Mars using Kepler's Third Law
+    earth_sat_semi_major_axis = EARTH_SATELLITE_RADIUS  # Semi-major axis for Earth satellite
+    mars_sat_semi_major_axis = MARS_SATELLITE_RADIUS  # Semi-major axis for Mars satellite
+    
+    # Orbital periods (in seconds)
+    earth_sat_period = orbital_period(earth_sat_semi_major_axis, 5.972e24)  # Earth mass
+    mars_sat_period = orbital_period(mars_sat_semi_major_axis, 0.64171e24)  # Mars mass
+
+    # Compute angular positions for satellites (angular velocity = 2*pi / period)
+    earth_sat_angle = (2 * np.pi * (current_time / earth_sat_period)) % (2 * np.pi)
+    mars_sat_angle = (2 * np.pi * (current_time / mars_sat_period)) % (2 * np.pi)
+
+    # Satellite positions based on updated time (earth_sat_angle and mars_sat_angle)
     earth_sat_pos = earth_pos + np.array([EARTH_SATELLITE_RADIUS * np.cos(earth_sat_angle),
                                           EARTH_SATELLITE_RADIUS * np.sin(earth_sat_angle)])
     mars_sat_pos = mars_pos + np.array([MARS_SATELLITE_RADIUS * np.cos(mars_sat_angle),
                                         MARS_SATELLITE_RADIUS * np.sin(mars_sat_angle)])
 
+     # Check if the communication line is obstructed by Earth or Mars
+    communication_line_color = 'green'  # Default color
+      # Calculate communication ray direction from Earth satellite to Mars satellite
+    ray_direction = mars_sat_pos - earth_sat_pos
+    ray_direction /= np.linalg.norm(ray_direction)  # Normalize direction
+
+    # Initial check for line of sight between Earth and Mars satellites
+    communication_line_color = 'green'  # Default color
+
+    # List of celestial bodies and their radii to check for obstructions
+    celestial_bodies = [
+        {'name': 'Sun', 'position': np.array([0, 0]), 'radius': SUN_RADIUS},
+        {'name': 'Earth', 'position': earth_pos, 'radius': EARTH_RADIUS},
+        {'name': 'Mars', 'position': mars_pos, 'radius': MARS_RADIUS}
+    ]
+
+    # Check if the communication ray is obstructed by any celestial body
+    for body in celestial_bodies:
+        if ray_intersects_sphere(earth_sat_pos, ray_direction, body['position'], body['radius']):
+            communication_line_color = 'red'  # Set to red if blocked by any celestial body
+            break  # No need to check further if already obstructed
+
+    # Update the communication line only if it's not obstructed
+    if communication_line_color == 'green':
+        communication_line.set_data([earth_sat_pos[0], mars_sat_pos[0]], 
+                                     [earth_sat_pos[1], mars_sat_pos[1]])
+    else:
+        # If blocked, communication line is set to red
+        communication_line.set_data([], [])
 
     # Update satellite positions
     earth_satellite.set_data([earth_sat_pos[0]], [earth_sat_pos[1]])
     mars_satellite.set_data([mars_sat_pos[0]], [mars_sat_pos[1]])
+
+    communication_line.set_color(communication_line_color)
+
 
     # Communication line between satellites
     communication_line.set_data([earth_sat_pos[0], mars_sat_pos[0]], 
@@ -133,11 +201,10 @@ def update(frame):
 
     # Updated focus logic (no more if-elif-else)
     focus_positions = {
-    'Earth': {'position': earth_pos, 'zoomRatio': 4},
-    'Mars': {'position': mars_pos, 'zoomRatio': 4},
-    'EarthSat1': {'position': earth_sat_pos, 'zoomRatio': 10000},
-    'MarsSat1': {'position': mars_sat_pos, 'zoomRatio': 10000}
-    
+        'Earth': {'position': earth_pos, 'zoomRatio': 4},
+        'Mars': {'position': mars_pos, 'zoomRatio': 4},
+        'EarthSat1': {'position': earth_sat_pos, 'zoomRatio': 10000},
+        'MarsSat1': {'position': mars_sat_pos, 'zoomRatio': 10000}
     }
 
     # Get the position for the given focus, defaulting to (0, 0) if not found
@@ -154,7 +221,6 @@ def update(frame):
         ax.set_xlim(-initial_zoom, initial_zoom)
         ax.set_ylim(-initial_zoom, initial_zoom)
 
-    
     # Update simulation speed and MET
     speed_text.set_text(f"Simulation Speed: {simulation_speed}x")
     met_text.set_text(f"Mission Elapsed Time: {format_time(current_time)}")
