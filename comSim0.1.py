@@ -2,6 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from matplotlib.patches import Circle
+from astroquery.jplhorizons import Horizons
+from datetime import datetime
 
 # Constants
 AU = 1.496e11  # Distance from Earth to Sun in meters
@@ -43,9 +45,9 @@ mars_sat_orbit_x = MARS_SATELLITE_RADIUS * np.cos(theta)
 mars_sat_orbit_y = MARS_SATELLITE_RADIUS * np.sin(theta)
 
 
-def kepler_position(semi_major_axis, eccentricity, orbital_period, time):
+def kepler_position(semi_major_axis, eccentricity, orbital_period, time, start_anomaly):
     mean_motion = 2 * np.pi / orbital_period
-    mean_anomaly = mean_motion * time
+    mean_anomaly = mean_motion * time + start_anomaly  # Add the initial true anomaly (start_anomaly)
     eccentric_anomaly = mean_anomaly
 
     # Solve Kepler's Equation iteratively
@@ -60,7 +62,6 @@ def kepler_position(semi_major_axis, eccentricity, orbital_period, time):
     x = r * np.cos(true_anomaly)
     y = r * np.sin(true_anomaly)
     return np.array([x, y])
-
 # Visualization setup
 fig, ax = plt.subplots(figsize=(8, 8))
 ax.set_aspect('equal')
@@ -162,14 +163,22 @@ def orbital_period(semi_major_axis, mass_of_planet):
     G = 6.67430e-11  # Gravitational constant in m^3 kg^-1 s^-2
     return 2 * np.pi * np.sqrt((semi_major_axis**3) / (G * mass_of_planet))
 
+# Create an inset axes for the snapshot
+inset_ax = fig.add_axes([0.7, 0.75, 0.25, 0.2])  # [left, bottom, width, height]
+inset_ax.set_aspect('equal')
+inset_ax.axis('off')  # Turn off the axes by default
+
+starting_time_Earth = 0
+starting_time_Mars = 0
+
 #Render Loop
 def update(frame):
     global focus, simulation_speed, current_time
     current_time += 3600 * simulation_speed  # Increment time based on speed (in seconds)
 
     # Keplerian positions for Earth and Mars based on updated time
-    earth_pos = kepler_position(EARTH_SEMI_MAJOR_AXIS, EARTH_ECCENTRICITY, EARTH_PERIOD, current_time)
-    mars_pos = kepler_position(MARS_SEMI_MAJOR_AXIS, MARS_ECCENTRICITY, MARS_PERIOD, current_time)
+    earth_pos = kepler_position(EARTH_SEMI_MAJOR_AXIS, EARTH_ECCENTRICITY, EARTH_PERIOD, current_time, starting_time_Earth)
+    mars_pos = kepler_position(MARS_SEMI_MAJOR_AXIS, MARS_ECCENTRICITY, MARS_PERIOD, current_time, starting_time_Mars)
     
     # Ensure positions are sequences
     earth.set_data([earth_pos[0]], [earth_pos[1]])
@@ -235,13 +244,22 @@ def update(frame):
                                  [earth_sat_pos[1], mars_sat_pos[1]])
 
     # Updated focus logic (no more if-elif-else)
-    focus_positions = {
-        'Earth': {'position': earth_pos, 'zoomRatio': 4},
-        'Mars': {'position': mars_pos, 'zoomRatio': 4},
-        'EarthSat1': {'position': earth_sat_pos, 'zoomRatio': 10000},
-        'MarsSat1': {'position': mars_sat_pos, 'zoomRatio': 10000}
-    }
+    # focus_positions = {
+    #     'Earth': {'position': earth_pos, 'zoomRatio': 4, 'radius': EARTH_RADIUS, 'label': "Earth"},
+    #     'Mars': {'position': mars_pos, 'zoomRatio': 4, 'radius': MARS_RADIUS, 'label': "Mars"},
+    #     'EarthSat1': {'position': earth_sat_pos, 'zoomRatio': 10000, 'partner': mars_sat_pos,
+    #                   'radius': EARTH_RADIUS, 'targetCelestial': mars_pos, 'planet_label': "Earth"},
+    #     'MarsSat1': {'position': mars_sat_pos, 'zoomRatio': 10000, 'partner': earth_sat_pos,
+    #                  'radius': MARS_RADIUS, 'targetCelestial': earth_pos, 'planet_label': "Mars"}
+    # }
 
+    focus_positions = {
+            'Earth': {'position': earth_pos, 'zoomRatio': 4, 'radius': EARTH_RADIUS, 'label': "Earth", 'color': 'blue'}, 
+            'Mars': {'position': mars_pos, 'zoomRatio': 4, 'radius': MARS_RADIUS, 'label': "Mars", 'color': 'red'},
+            'EarthSat1': {'position': earth_sat_pos, 'zoomRatio': 10000, 'partner': 'MarsSat1', 'targetCelestial': 'Mars', 'altitude': EARTH_SATELLITE_ALTITUDE},
+            'MarsSat1': {'position': mars_sat_pos, 'zoomRatio': 10000, 'partner': 'EarthSat1', 'targetCelestial': 'Earth', 'altitude': MARS_SATELLITE_ALTITUDE}
+        }
+    
     # Get the position for the given focus, defaulting to (0, 0) if not found
     focus_data = focus_positions.get(focus, {'position': (0, 0), 'zoomRatio': 4, 
                                              'markerSize': 4, 'celestialMarkerSize': 4})
@@ -252,11 +270,58 @@ def update(frame):
     ax.set_xlim(focus_pos[0] - initial_zoom / zoom, focus_pos[0] + initial_zoom / zoom)
     ax.set_ylim(focus_pos[1] - initial_zoom / zoom, focus_pos[1] + initial_zoom / zoom)
 
+
+    
     # If no specific focus, adjust to the default zoom
     if focus not in focus_positions:
         ax.set_xlim(-initial_zoom, initial_zoom)
         ax.set_ylim(-initial_zoom, initial_zoom)
 
+
+    if  'targetCelestial' in focus_data and 'partner' in focus_data:
+        # Update the inset snapshot
+
+        inset_ax.clear()
+        inset_ax.set_aspect('equal')
+        inset_ax.set_title(f"View near {focus_data['targetCelestial']}", fontsize=8)
+
+        # Draw the focused planet
+        target = focus_data['targetCelestial']
+        target_pos = focus_positions[target]['position']
+        target_radius = focus_positions[target]['radius']
+        target_label = focus_positions[target]['label']
+        target_color = focus_positions[target]['color']
+        planet_circle = plt.Circle(target_pos, target_radius, color=target_color, alpha=0.3, label=target_label)
+        inset_ax.add_artist(planet_circle)
+
+        # Draw the planet's orbital path
+        orbital_path = plt.Circle([0, 0], np.linalg.norm(target_pos), color='gray', linestyle='--', fill=False, alpha=0.5)
+        inset_ax.add_artist(orbital_path)
+            
+
+        # Draw the partner satellite
+        partnerSat = focus_data['partner']
+        partner_pos = focus_positions[partnerSat]['position']
+        partner_altitude = focus_positions[partnerSat]['altitude']
+        inset_ax.plot(partner_pos[0], partner_pos[1], 'mo', markersize=6, label='Partner Satellite')
+
+        # Draw communication line
+        line_color = 'green' if not line_intersects_circle(
+            focus_data['position'], partner_pos, target_pos, target_radius) else 'red'
+        inset_ax.plot([focus_data['position'][0], partner_pos[0]],
+                        [focus_data['position'][1], partner_pos[1]], color=line_color, linestyle='-', linewidth=1.5)
+        # Draw satellite orbit
+        satellite_orbit = plt.Circle(target_pos, target_radius + partner_altitude, color='green', linestyle='--', fill=False, alpha=0.5)
+        inset_ax.add_artist(satellite_orbit)
+
+        # Draw the focused satellite
+        inset_ax.set_xlim(partner_pos[0] - initial_zoom / zoom, partner_pos[0] + initial_zoom / zoom)
+        inset_ax.set_ylim(partner_pos[1] - initial_zoom / zoom, partner_pos[1] + initial_zoom / zoom)
+
+    else:
+    
+        inset_ax.axis('off')
+        
     # Update simulation speed and MET
     speed_text.set_text(f"Simulation Speed: {simulation_speed}x")
     met_text.set_text(f"Mission Elapsed Time: {format_time(current_time)}")
@@ -309,6 +374,6 @@ frames = int(EARTH_PERIOD / 3600)
 ani = FuncAnimation(fig, update, frames=frames, init_func=init, blit=True, interval=50)
 
 
-plt.title("Comnet Simulation V0.1")
+plt.title("Comnet Simulation V0.2")
 plt.grid(True)
 plt.show()
