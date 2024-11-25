@@ -319,7 +319,7 @@ def update(frame):
         inset_ax.set_ylim(partner_pos[1] - initial_zoom / zoom, partner_pos[1] + initial_zoom / zoom)
 
     else:
-    
+        inset_ax.clear()
         inset_ax.axis('off')
         
     # Update simulation speed and MET
