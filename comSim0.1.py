@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
+from matplotlib.patches import Circle
 
 # Constants
 AU = 1.496e11  # Distance from Earth to Sun in meters
@@ -9,7 +10,6 @@ MARS_SEMI_MAJOR_AXIS = 1.524 * AU
 EARTH_PERIOD = 365.25 * 24 * 3600  # Earth's orbital period in seconds
 MARS_PERIOD = 687 * 24 * 3600  # Mars' orbital period in seconds
 SUN_RADIUS = 6.957e8  # Radius of the Sun in meters
-
 EARTH_ECCENTRICITY = 0.0167
 MARS_ECCENTRICITY = 0.0934
 EARTH_SATELLITE_ALTITUDE = 500e3
@@ -18,6 +18,9 @@ EARTH_RADIUS = 6371e3
 MARS_RADIUS = 3389.5e3
 EARTH_SATELLITE_RADIUS = EARTH_RADIUS + EARTH_SATELLITE_ALTITUDE
 MARS_SATELLITE_RADIUS = MARS_RADIUS + MARS_SATELLITE_ALTITUDE
+BASE_EARTH_MARKER_SIZE = 6  # Default 4
+BASE_MARS_MARKER_SIZE = 6  
+
 
 # Keplerian orbit calculation
 def kepler_orbit_points(semi_major_axis, eccentricity, num_points=1000):
@@ -27,8 +30,17 @@ def kepler_orbit_points(semi_major_axis, eccentricity, num_points=1000):
     y = radii * np.sin(true_anomalies)
     return x, y
 
+
+#Orbital Path Calculations
 earth_orbit_x, earth_orbit_y = kepler_orbit_points(EARTH_SEMI_MAJOR_AXIS, EARTH_ECCENTRICITY)
 mars_orbit_x, mars_orbit_y = kepler_orbit_points(MARS_SEMI_MAJOR_AXIS, MARS_ECCENTRICITY)
+
+# Satellite orbital paths (circular orbits)
+theta = np.linspace(0, 2 * np.pi, 1000)
+earth_sat_orbit_x = EARTH_SATELLITE_RADIUS * np.cos(theta)
+earth_sat_orbit_y = EARTH_SATELLITE_RADIUS * np.sin(theta)
+mars_sat_orbit_x = MARS_SATELLITE_RADIUS * np.cos(theta)
+mars_sat_orbit_y = MARS_SATELLITE_RADIUS * np.sin(theta)
 
 
 def kepler_position(semi_major_axis, eccentricity, orbital_period, time):
@@ -66,6 +78,20 @@ ax.set_ylim(-initial_zoom, initial_zoom)
 ax.plot(earth_orbit_x, earth_orbit_y, 'b--', label='Earth Orbit')
 ax.plot(mars_orbit_x, mars_orbit_y, 'r--', label='Mars Orbit')
 
+# Satellite orbital paths
+# Earth and Mars orbits are centered at their host planets
+earth_sat_path, = ax.plot([], [], 'g--', label='Earth Satellite Orbit', alpha=0.5)
+mars_sat_path, = ax.plot([], [], 'm--', label='Mars Satellite Orbit', alpha=0.5)
+
+
+
+# Earth's radius circle (outer boundary of Earth)
+earth_radius_circle = Circle((0, 0), EARTH_RADIUS, color='blue', alpha=0.3, label="Earth's Outer Radius")
+ax.add_artist(earth_radius_circle)
+
+# Mars's radius circle (outer boundary of Mars)
+mars_radius_circle = Circle((0, 0), MARS_RADIUS, color='red', alpha=0.3, label="Mars's Outer Radius")
+ax.add_artist(mars_radius_circle)
 
 # Planets and satellites
 earth, = ax.plot([], [], 'bo', markersize=6, label='Earth')
@@ -90,24 +116,33 @@ def init():
 # Initialize the MET text
 met_text = ax.text(0.02, 0.92, '', transform=ax.transAxes, fontsize=10, color='black', ha='left')
 
-def ray_intersects_sphere(ray_origin, ray_direction, sphere_center, sphere_radius):
-    """Check if a ray intersects a sphere (representing a celestial body)."""
-    # Vector from ray origin to sphere center
-    ray_to_sphere = sphere_center - ray_origin
+def line_intersects_circle(p1, p2, circle_center, circle_radius):
+    """
+    Check if a line segment (p1 to p2) intersects a circle.
     
-    # Project this vector onto the ray direction to get the distance along the ray to the closest point
-    projection = np.dot(ray_to_sphere, ray_direction)
-    
-    # Get the closest point on the ray to the sphere center
-    closest_point = ray_origin + projection * ray_direction
-    
-    # Calculate the distance from the closest point to the sphere center
-    distance_to_sphere = np.linalg.norm(closest_point - sphere_center)
-    
-    # If the distance from the closest point is less than the radius of the sphere, the ray intersects the sphere
-    if distance_to_sphere < sphere_radius:
-        return True  # Ray intersects the sphere
-    return False  # Ray does not intersect the sphere
+    Args:
+        p1 (np.array): Start point of the line segment.
+        p2 (np.array): End point of the line segment.
+        circle_center (np.array): Center of the circle.
+        circle_radius (float): Radius of the circle.
+
+    Returns:
+        bool: True if the line segment intersects the circle, False otherwise.
+    """
+    # Vector from p1 to p2
+    line_vec = p2 - p1
+    # Vector from p1 to the circle center
+    p1_to_center = circle_center - p1
+    # Project p1_to_center onto the line direction
+    t = np.dot(p1_to_center, line_vec) / np.dot(line_vec, line_vec)
+    # Clamp t to the line segment (0 ≤ t ≤ 1)
+    t = max(0, min(1, t))
+    # Closest point on the line segment to the circle center
+    closest_point = p1 + t * line_vec
+    # Distance from closest point to circle center
+    distance_to_center = np.linalg.norm(closest_point - circle_center)
+    # Check if the distance is less than the circle's radius
+    return distance_to_center <= circle_radius
 
 
 def format_time(seconds):
@@ -158,36 +193,36 @@ def update(frame):
     mars_sat_pos = mars_pos + np.array([MARS_SATELLITE_RADIUS * np.cos(mars_sat_angle),
                                         MARS_SATELLITE_RADIUS * np.sin(mars_sat_angle)])
 
-     # Check if the communication line is obstructed by Earth or Mars
-    communication_line_color = 'green'  # Default color
-      # Calculate communication ray direction from Earth satellite to Mars satellite
-    ray_direction = mars_sat_pos - earth_sat_pos
-    ray_direction /= np.linalg.norm(ray_direction)  # Normalize direction
+    # Update satellite orbital paths
+    earth_sat_path.set_data(earth_pos[0] + earth_sat_orbit_x, earth_pos[1] + earth_sat_orbit_y)
+    mars_sat_path.set_data(mars_pos[0] + mars_sat_orbit_x, mars_pos[1] + mars_sat_orbit_y)
 
-    # Initial check for line of sight between Earth and Mars satellites
-    communication_line_color = 'green'  # Default color
+    # Update the radius circles for Earth and Mars
+    earth_radius_circle.center = (earth_pos[0], earth_pos[1])
+    mars_radius_circle.center = (mars_pos[0], mars_pos[1])
 
-    # List of celestial bodies and their radii to check for obstructions
+    # Define celestial bodies for line-of-sight obstruction
     celestial_bodies = [
-        {'name': 'Sun', 'position': np.array([0, 0]), 'radius': SUN_RADIUS},
-        {'name': 'Earth', 'position': earth_pos, 'radius': EARTH_RADIUS},
-        {'name': 'Mars', 'position': mars_pos, 'radius': MARS_RADIUS}
-    ]
+    {'name': 'Sun', 'position': np.array([0, 0]), 'radius': SUN_RADIUS},
+    {'name': 'Earth', 'position': earth_pos, 'radius': EARTH_RADIUS},
+    {'name': 'Mars', 'position': mars_pos, 'radius': MARS_RADIUS},
+]
+    # Default communication line color
+    communication_line_color = 'green'
 
-    # Check if the communication ray is obstructed by any celestial body
+    # Check for obstructions
     for body in celestial_bodies:
-        if ray_intersects_sphere(earth_sat_pos, ray_direction, body['position'], body['radius']):
-            communication_line_color = 'red'  # Set to red if blocked by any celestial body
-            break  # No need to check further if already obstructed
+        if line_intersects_circle(earth_sat_pos, mars_sat_pos, body['position'], body['radius']):
+            communication_line_color = 'red'  # Communication obstructed
+            break  # No need to check further
 
-    # Update the communication line only if it's not obstructed
+    # Update the communication line color and data
     if communication_line_color == 'green':
-        communication_line.set_data([earth_sat_pos[0], mars_sat_pos[0]], 
-                                     [earth_sat_pos[1], mars_sat_pos[1]])
+        communication_line.set_data([earth_sat_pos[0], mars_sat_pos[0]],
+                                    [earth_sat_pos[1], mars_sat_pos[1]])
     else:
-        # If blocked, communication line is set to red
-        communication_line.set_data([], [])
-
+        communication_line.set_data([], [])  # Clear the line if obstructed
+    communication_line.set_color(communication_line_color)
     # Update satellite positions
     earth_satellite.set_data([earth_sat_pos[0]], [earth_sat_pos[1]])
     mars_satellite.set_data([mars_sat_pos[0]], [mars_sat_pos[1]])
@@ -208,7 +243,8 @@ def update(frame):
     }
 
     # Get the position for the given focus, defaulting to (0, 0) if not found
-    focus_data = focus_positions.get(focus, {'position': (0, 0), 'zoomRatio': 4})
+    focus_data = focus_positions.get(focus, {'position': (0, 0), 'zoomRatio': 4, 
+                                             'markerSize': 4, 'celestialMarkerSize': 4})
     focus_pos = focus_data['position']
     zoom = focus_data['zoomRatio']
 
