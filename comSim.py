@@ -2,8 +2,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from matplotlib.patches import Circle
-from astroquery.jplhorizons import Horizons
-from datetime import datetime
+import orbitalCompute as oc
+from datetime import datetime, timedelta
+
 
 # Constants
 AU = 1.496e11  # Distance from Earth to Sun in meters
@@ -22,6 +23,10 @@ EARTH_SATELLITE_RADIUS = EARTH_RADIUS + EARTH_SATELLITE_ALTITUDE
 MARS_SATELLITE_RADIUS = MARS_RADIUS + MARS_SATELLITE_ALTITUDE
 BASE_EARTH_MARKER_SIZE = 6  # Default 4
 BASE_MARS_MARKER_SIZE = 6  
+# Constants for Lagrange points
+L4_ANGLE = np.radians(60)  # 60 degrees ahead of Earth
+L5_ANGLE = np.radians(-60)  # 60 degrees behind Earth
+
 
 
 # Keplerian orbit calculation
@@ -32,6 +37,14 @@ def kepler_orbit_points(semi_major_axis, eccentricity, num_points=1000):
     y = radii * np.sin(true_anomalies)
     return x, y
 
+
+def lagrange_point_position(semi_major_axis, earth_position, angle_offset):
+    """Calculate the position of a Lagrange point relative to Earth's orbit."""
+    sun_to_earth_vector = earth_position / np.linalg.norm(earth_position)  # Unit vector from Sun to Earth
+    perpendicular_vector = np.array([-sun_to_earth_vector[1], sun_to_earth_vector[0]])  # Perpendicular to the unit vector
+    lagrange_vector = (np.cos(angle_offset) * sun_to_earth_vector +
+                       np.sin(angle_offset) * perpendicular_vector)
+    return lagrange_vector * semi_major_axis
 
 #Orbital Path Calculations
 earth_orbit_x, earth_orbit_y = kepler_orbit_points(EARTH_SEMI_MAJOR_AXIS, EARTH_ECCENTRICITY)
@@ -94,12 +107,18 @@ ax.add_artist(earth_radius_circle)
 mars_radius_circle = Circle((0, 0), MARS_RADIUS, color='red', alpha=0.3, label="Mars's Outer Radius")
 ax.add_artist(mars_radius_circle)
 
+
 # Planets and satellites
 earth, = ax.plot([], [], 'bo', markersize=6, label='Earth')
 mars, = ax.plot([], [], 'ro', markersize=6, label='Mars')
 sun, = ax.plot([0], [0], 'yo', markersize=12, label='Sun')
 earth_satellite, = ax.plot([], [], 'go', markersize=4, label='Earth Satellite')
 mars_satellite, = ax.plot([], [], 'mo', markersize=4, label='Mars Satellite')
+# Add satellites for L4 and L5
+l4_satellite, = ax.plot([], [], 'co', markersize=4, label='L4 Satellite')
+l5_satellite, = ax.plot([], [], 'mo', markersize=4, label='L5 Satellite')
+
+# Communication lines
 communication_line, = ax.plot([], [], '-', lw=1.5, label='Communication Link', color='green', alpha=1)
 
 # Speed indicator
@@ -116,6 +135,7 @@ def init():
     return earth, mars, earth_satellite, mars_satellite, communication_line, speed_text
 # Initialize the MET text
 met_text = ax.text(0.02, 0.92, '', transform=ax.transAxes, fontsize=10, color='black', ha='left')
+UTC_text = ax.text(0.02, 0.89, '', transform=ax.transAxes, fontsize=10, color='black', ha='left')
 
 def line_intersects_circle(p1, p2, circle_center, circle_radius):
     """
@@ -168,13 +188,21 @@ inset_ax = fig.add_axes([0.7, 0.75, 0.25, 0.2])  # [left, bottom, width, height]
 inset_ax.set_aspect('equal')
 inset_ax.axis('off')  # Turn off the axes by default
 
-starting_time_Earth = 0
-starting_time_Mars = 0
+# Initial starting times for Earth and Mars (J2000) (2032)
+startingDate = [1, 1, 2032]
+start_datetime = datetime(startingDate[2], startingDate[1], startingDate[0])  # Convert to datetime object
+starting_time_Earth, starting_time_Mars = oc.calculate_true_anomalies(startingDate[0], startingDate[1], startingDate[2])
+print(f"Starting time for Earth: {starting_time_Earth:.4f} degrees")
+print(f"Starting time for Mars: {starting_time_Mars:.4f} degrees")
+
 
 #Render Loop
 def update(frame):
     global focus, simulation_speed, current_time
     current_time += 3600 * simulation_speed  # Increment time based on speed (in seconds)
+    mission_elapsed_time = timedelta(seconds=current_time)
+    utc_time = start_datetime + mission_elapsed_time
+
 
     # Keplerian positions for Earth and Mars based on updated time
     earth_pos = kepler_position(EARTH_SEMI_MAJOR_AXIS, EARTH_ECCENTRICITY, EARTH_PERIOD, current_time, starting_time_Earth)
@@ -201,14 +229,27 @@ def update(frame):
                                           EARTH_SATELLITE_RADIUS * np.sin(earth_sat_angle)])
     mars_sat_pos = mars_pos + np.array([MARS_SATELLITE_RADIUS * np.cos(mars_sat_angle),
                                         MARS_SATELLITE_RADIUS * np.sin(mars_sat_angle)])
+    
+     # Calculate positions of L4 and L5
+    l4_pos = lagrange_point_position(EARTH_SEMI_MAJOR_AXIS, earth_pos, L4_ANGLE)
+    l5_pos = lagrange_point_position(EARTH_SEMI_MAJOR_AXIS, earth_pos, L5_ANGLE)
+
+    # Set L4 and L5 positions
+    l4_satellite.set_data([l4_pos[0]], [l4_pos[1]])  # Wrap in lists to ensure they're sequences
+    l5_satellite.set_data([l5_pos[0]], [l5_pos[1]])
 
     # Update satellite orbital paths
     earth_sat_path.set_data(earth_pos[0] + earth_sat_orbit_x, earth_pos[1] + earth_sat_orbit_y)
     mars_sat_path.set_data(mars_pos[0] + mars_sat_orbit_x, mars_pos[1] + mars_sat_orbit_y)
 
+    # Update satellite positions
+    earth_satellite.set_data([earth_sat_pos[0]], [earth_sat_pos[1]])
+    mars_satellite.set_data([mars_sat_pos[0]], [mars_sat_pos[1]])
+
     # Update the radius circles for Earth and Mars
     earth_radius_circle.center = (earth_pos[0], earth_pos[1])
     mars_radius_circle.center = (mars_pos[0], mars_pos[1])
+
 
     # Define celestial bodies for line-of-sight obstruction
     celestial_bodies = [
@@ -219,45 +260,51 @@ def update(frame):
     # Default communication line color
     communication_line_color = 'green'
 
-    # Check for obstructions
-    for body in celestial_bodies:
-        if line_intersects_circle(earth_sat_pos, mars_sat_pos, body['position'], body['radius']):
-            communication_line_color = 'red'  # Communication obstructed
-            break  # No need to check further
+    # Function to check if the line of sight is obstructed
+    def is_obstructed(start_pos, end_pos, celestial_bodies):
+        for body in celestial_bodies:
+            if line_intersects_circle(start_pos, end_pos, body['position'], body['radius']):
+                return True
+        return False
 
-    # Update the communication line color and data
-    if communication_line_color == 'green':
+    # Check direct line of sight between EarthSat and MarsSat
+    if is_obstructed(earth_sat_pos, mars_sat_pos, celestial_bodies):
+        communication_line_color = 'red'  # Communication obstructed
+        # Draw red line for the obstructed path
         communication_line.set_data([earth_sat_pos[0], mars_sat_pos[0]],
                                     [earth_sat_pos[1], mars_sat_pos[1]])
+
+        # Try alternate paths through L4Sat or L5Sat
+        alternate_path_found = False
+        if not is_obstructed(earth_sat_pos, l4_pos, celestial_bodies) and not is_obstructed(l4_pos, mars_sat_pos, celestial_bodies):
+            # Path through L4Sat is clear
+            communication_line.set_data([earth_sat_pos[0], l4_pos[0], mars_sat_pos[0]],
+                                        [earth_sat_pos[1], l4_pos[1], mars_sat_pos[1]])
+            alternate_path_found = True
+        elif not is_obstructed(earth_sat_pos, l5_pos, celestial_bodies) and not is_obstructed(l5_pos, mars_sat_pos, celestial_bodies):
+            # Path through L5Sat is clear
+            communication_line.set_data([earth_sat_pos[0], l5_pos[0], mars_sat_pos[0]],
+                                        [earth_sat_pos[1], l5_pos[1], mars_sat_pos[1]])
+            alternate_path_found = True
+
+        if alternate_path_found:
+            communication_line_color = 'green'  # Paths through L4Sat or L5Sat found, color it green
     else:
-        communication_line.set_data([], [])  # Clear the line if obstructed
+        # No obstruction, direct line is clear
+        communication_line.set_data([earth_sat_pos[0], mars_sat_pos[0]],
+                                    [earth_sat_pos[1], mars_sat_pos[1]])
+        communication_line_color = 'green'  # Direct path is clear
+
+    # Set the communication line color to green (for paths) and red (for obstructions)
     communication_line.set_color(communication_line_color)
-    # Update satellite positions
-    earth_satellite.set_data([earth_sat_pos[0]], [earth_sat_pos[1]])
-    mars_satellite.set_data([mars_sat_pos[0]], [mars_sat_pos[1]])
-
-    communication_line.set_color(communication_line_color)
-
-
-    # Communication line between satellites
-    communication_line.set_data([earth_sat_pos[0], mars_sat_pos[0]], 
-                                 [earth_sat_pos[1], mars_sat_pos[1]])
-
-    # Updated focus logic (no more if-elif-else)
-    # focus_positions = {
-    #     'Earth': {'position': earth_pos, 'zoomRatio': 4, 'radius': EARTH_RADIUS, 'label': "Earth"},
-    #     'Mars': {'position': mars_pos, 'zoomRatio': 4, 'radius': MARS_RADIUS, 'label': "Mars"},
-    #     'EarthSat1': {'position': earth_sat_pos, 'zoomRatio': 10000, 'partner': mars_sat_pos,
-    #                   'radius': EARTH_RADIUS, 'targetCelestial': mars_pos, 'planet_label': "Earth"},
-    #     'MarsSat1': {'position': mars_sat_pos, 'zoomRatio': 10000, 'partner': earth_sat_pos,
-    #                  'radius': MARS_RADIUS, 'targetCelestial': earth_pos, 'planet_label': "Mars"}
-    # }
 
     focus_positions = {
             'Earth': {'position': earth_pos, 'zoomRatio': 4, 'radius': EARTH_RADIUS, 'label': "Earth", 'color': 'blue'}, 
             'Mars': {'position': mars_pos, 'zoomRatio': 4, 'radius': MARS_RADIUS, 'label': "Mars", 'color': 'red'},
             'EarthSat1': {'position': earth_sat_pos, 'zoomRatio': 10000, 'partner': 'MarsSat1', 'targetCelestial': 'Mars', 'altitude': EARTH_SATELLITE_ALTITUDE},
-            'MarsSat1': {'position': mars_sat_pos, 'zoomRatio': 10000, 'partner': 'EarthSat1', 'targetCelestial': 'Earth', 'altitude': MARS_SATELLITE_ALTITUDE}
+            'MarsSat1': {'position': mars_sat_pos, 'zoomRatio': 10000, 'partner': 'EarthSat1', 'targetCelestial': 'Earth', 'altitude': MARS_SATELLITE_ALTITUDE},
+            'L4Sat': {'position': l4_pos, 'zoomRatio': 10000, 'targetCelestial': 'Earth', 'altitude': 0},
+            'L5Sat': {'position': l5_pos, 'zoomRatio': 10000, 'targetCelestial': 'Earth', 'altitude': 0}
         }
     
     # Get the position for the given focus, defaulting to (0, 0) if not found
@@ -325,9 +372,11 @@ def update(frame):
     # Update simulation speed and MET
     speed_text.set_text(f"Simulation Speed: {simulation_speed}x")
     met_text.set_text(f"Mission Elapsed Time: {format_time(current_time)}")
+    utc_time_str = utc_time.strftime("%Y-%m-%d %H:%M:%S")
+    UTC_text.set_text(f"UTC: {utc_time_str}")
     fig.canvas.draw()
     
-    return earth, mars, earth_satellite, mars_satellite, communication_line, speed_text, met_text
+    return earth, mars, earth_satellite, mars_satellite, communication_line, speed_text, met_text, l4_satellite, l5_satellite
 
 # Event handlers
 def on_scroll(event):
@@ -361,6 +410,10 @@ def on_key(event):
         focus = 'EarthSat1'
     elif event.key == '2':
         focus = 'MarsSat1'
+    elif event.key == '4':
+        focus = 'L4Sat'
+    elif event.key == '5':
+        focus = 'L5Sat'
     elif event.key == 'up':
         simulation_speed = min(simulation_speed * 2, 128)
     elif event.key == 'down':
