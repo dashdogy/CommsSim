@@ -6,7 +6,6 @@ import orbitalCompute as oc
 from datetime import datetime, timedelta
 
 
-
 # Constants
 AU = 1.496e11  # Distance from Earth to Sun in meters
 EARTH_SEMI_MAJOR_AXIS = AU
@@ -193,8 +192,6 @@ inset_ax.axis('off')  # Turn off the axes by default
 startingDate = [1, 1, 2032]
 start_datetime = datetime(startingDate[2], startingDate[1], startingDate[0])  # Convert to datetime object
 starting_time_Earth, starting_time_Mars = oc.calculate_true_anomalies(startingDate[0], startingDate[1], startingDate[2])
-print(f"Starting time for Earth: {starting_time_Earth:.4f} degrees")
-print(f"Starting time for Mars: {starting_time_Mars:.4f} degrees")
 
 
 #Render Loop

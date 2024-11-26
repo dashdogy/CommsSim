@@ -60,12 +60,3 @@ def calculate_true_anomalies(day, month, year):
     true_anomaly_mars = true_anomaly(M_mars, orbital_params['mars']['e'])
 
     return true_anomaly_earth, true_anomaly_mars
-
-# Example usage: Calculate true anomalies for 1 January 2032
-day = 1
-month = 1
-year = 2032
-true_anomaly_earth, true_anomaly_mars = calculate_true_anomalies(day, month, year)
-
-print(f"True Anomaly of Earth on {day}-{month}-{year}: {true_anomaly_earth:.4f} degrees")
-print(f"True Anomaly of Mars on {day}-{month}-{year}: {true_anomaly_mars:.4f} degrees")
