@@ -331,6 +331,7 @@ def update(frame):
             mid_pos = sat['position']
             if not is_obstructed(start_pos, mid_pos, celestial_bodies) and not is_obstructed(mid_pos, end_pos, celestial_bodies):
                 return mid_pos  # Return the position of the alternate satellite
+        print("No alternate path found Communication lost at: ", utc_time)
         return None  # No alternate path found
 
 
@@ -470,7 +471,7 @@ def update(frame):
     UTC_text.set_text(f"UTC: {utc_time_str}")
     l4Usage_text.set_text(f"L4 Usage: {l4_usage_percentage:.2f}%")
     l5Usage_text.set_text(f"L5 Usage: {l5_usage_percentage:.2f}%")
-    commTime_text.set_text(f"Comm Time: {direct_comm_time:.2f} s")
+    commTime_text.set_text(f"Comm Time: {comm_time:.2f} s")
     directUsage_text.set_text(f"Direct Comm: {direct_comm_percentage:.2f}%")
     fig.canvas.draw()
     
