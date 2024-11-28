@@ -311,6 +311,7 @@ def update(frame):
     alternate_sats = [
         {'name': 'L4Sat', 'position': l4_pos},
         {'name': 'L5Sat', 'position': l5_pos},
+        {'name': 'Venus', 'position': venus_pos},
     ]
 
     # Default communication line color
