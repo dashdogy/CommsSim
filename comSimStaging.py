@@ -525,6 +525,6 @@ frames = int(EARTH_PERIOD / 3600)
 ani = FuncAnimation(fig, update, frames=frames, init_func=init, blit=True, interval=50)
 
 
-plt.title("Comnet Simulation V0.3")
+plt.title("Comnet Simulation V0.2")
 plt.grid(True)
 plt.show()

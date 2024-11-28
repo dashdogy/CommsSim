@@ -15,6 +15,18 @@ orbital_params = {
         'e': 0.0934,    # Eccentricity
         'T': 687,       # Orbital period in days
         'M0': 19.4123,  # Mean anomaly at J2000 in degrees
+    },
+    'venus': {
+        'a': 0.7233,    # AU (semi-major axis)
+        'e': 0.0067,    # Eccentricity
+        'T': 225,       # Orbital period in days
+        'M0': 181.979,  # Mean anomaly at J2000 in degrees
+    },
+    'mercury': {
+        'a': 0.3871,    # AU (semi-major axis)
+        'e': 0.2056,    # Eccentricity
+        'T': 88,        # Orbital period in days
+        'M0': 174.791,  # Mean anomaly at J2000 in degrees
     }
 }
 
@@ -54,9 +66,14 @@ def calculate_true_anomalies(day, month, year):
     # Calculate mean anomalies for Earth and Mars on the given date
     M_earth = mean_anomaly(orbital_params['earth']['M0'], orbital_params['earth']['T'], time)
     M_mars = mean_anomaly(orbital_params['mars']['M0'], orbital_params['mars']['T'], time)
+    M_venus = mean_anomaly(orbital_params['venus']['M0'], orbital_params['venus']['T'], time)
+    M_mercury = mean_anomaly(orbital_params['mercury']['M0'], orbital_params['mercury']['T'], time)
+    
 
     # Calculate true anomalies for Earth and Mars
     true_anomaly_earth = true_anomaly(M_earth, orbital_params['earth']['e'])
     true_anomaly_mars = true_anomaly(M_mars, orbital_params['mars']['e'])
+    true_anomaly_venus = true_anomaly(M_venus, orbital_params['venus']['e'])
+    true_anomaly_mercury = true_anomaly(M_mercury, orbital_params['mercury']['e'])
 
-    return true_anomaly_earth, true_anomaly_mars
+    return true_anomaly_earth, true_anomaly_mars, true_anomaly_venus, true_anomaly_mercury
